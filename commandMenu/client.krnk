@@ -2,7 +2,7 @@
 # KrunkScript Copyright (C) Yendis Entertainment Pty Ltd
 # 
 
-obj config = {
+obj commandMenu_config = {
 	menuKey: "o",           # Key used to open menu
 	buttons: obj[],
 	ui: {              		# Styling used for UI
@@ -67,17 +67,17 @@ obj config = {
     commandDivId: "commandDiv"
 };
 
-obj menuState = {
+obj commandMenu_menuState = {
     enabled: false,
 	created: false,
     players: obj[] # Can likely remove
 };
 
-str action sizeUnit(bool isPercent) {
+str action commandMenu_sizeUnit(bool isPercent) {
 	return isPercent ? "%" : "px";
 }
 
-str action createStyle(obj style) {
+str action commandMenu_createStyle(obj style) {
 	
 	str cssStyle = "";
 	
@@ -91,7 +91,7 @@ str action createStyle(obj style) {
 	}
 	
     # Width/Height
-    cssStyle += "width:" + (str)style.width + sizeUnit((bool)style.widthIsPercent) + ";height:" + (str)style.height + sizeUnit((bool)style.heightIsPercent) + ";";
+    cssStyle += "width:" + (str)style.width + commandMenu_sizeUnit((bool)style.widthIsPercent) + ";height:" + (str)style.height + commandMenu_sizeUnit((bool)style.heightIsPercent) + ";";
 
     # Background color + opacity
 	if(!!style.backgroundColor) {
@@ -109,7 +109,7 @@ str action createStyle(obj style) {
         num top = (num)style.position.top - (num)style.height / 2;
         num left = (num)style.position.left - (num)style.width / 2;
 
-        cssStyle += "position:fixed;top:" + toStr top + sizeUnit((bool)style.heightIsPercent) + ";" + "left:" + toStr left + sizeUnit((bool)style.widthIsPercent) + ";";
+        cssStyle += "position:fixed;top:" + toStr top + commandMenu_sizeUnit((bool)style.heightIsPercent) + ";" + "left:" + toStr left + commandMenu_sizeUnit((bool)style.widthIsPercent) + ";";
     }
 
     if(!!style.additional) {
@@ -119,40 +119,40 @@ str action createStyle(obj style) {
     return cssStyle;
 }
 
-action generateMenu() {
-    menuState.players = GAME.PLAYERS.list();
-	menuState.created = true;
+action commandMenu_generateMenu() {
+    commandMenu_menuState.players = GAME.PLAYERS.list();
+	commandMenu_menuState.created = true;
 
-    GAME.UI.addDIV((str)config.commandDivId, true, createStyle((obj)config.ui.menu));
+    GAME.UI.addDIV((str)commandMenu_config.commandDivId, true, commandMenu_createStyle((obj)commandMenu_config.ui.menu));
 
 	# Create header
-	str headerDiv = GAME.UI.addDIV("commandHeader", true, createStyle((obj)config.ui.header), (str)config.commandDivId);
-	GAME.UI.updateDIVText(headerDiv, config.ui.header.text);
+	str headerDiv = GAME.UI.addDIV("commandHeader", true, commandMenu_createStyle((obj)commandMenu_config.ui.header), (str)commandMenu_config.commandDivId);
+	GAME.UI.updateDIVText(headerDiv, commandMenu_config.ui.header.text);
 
 	# Create body container
-	str bodyDiv = GAME.UI.addDIV("commandBody", true, "width:100%;height:" + toStr(100 - (num)config.ui.header.height) +"%;overflow-y:auto;", (str)config.commandDivId);
+	str bodyDiv = GAME.UI.addDIV("commandBody", true, "width:100%;height:" + toStr(100 - (num)commandMenu_config.ui.header.height) +"%;overflow-y:auto;", (str)commandMenu_config.commandDivId);
 
 	# Create rows
-	for(num i = 0; i < lengthOf menuState.players; i++) {
-		obj player = (obj)menuState.players[i];
+	for(num i = 0; i < lengthOf commandMenu_menuState.players; i++) {
+		obj player = (obj)commandMenu_menuState.players[i];
 		
-		#num sid = (num)menuState.players[i].sid;
+		#num sid = (num)commandMenu_menuState.players[i].sid;
 		num sid = i;
 		
 		str idPostfix = "_" + toStr sid + "_" + (str)player.username;
 		
 		# Create row
-		config.ui.row.backgroundColor = (i + 1) % 2 == 0 ? (str)config.ui.row.rowEvenColor : (str)config.ui.row.rowOddColor; # Alternates background color where first row is odd
+		commandMenu_config.ui.row.backgroundColor = (i + 1) % 2 == 0 ? (str)commandMenu_config.ui.row.rowEvenColor : (str)commandMenu_config.ui.row.rowOddColor; # Alternates background color where first row is odd
 		
-    	str rowId = GAME.UI.addDIV("playerRow_" + toStr sid, true, createStyle((obj)config.ui.row), bodyDiv);
+    	str rowId = GAME.UI.addDIV("playerRow_" + toStr sid, true, commandMenu_createStyle((obj)commandMenu_config.ui.row), bodyDiv);
 	
 		# Create username text
-    	str textId = GAME.UI.addDIV("playerText_" + toStr sid, true, createStyle((obj)config.ui.playerText), rowId);
-		GAME.UI.updateDIVText(textId, menuState.players[i].username);
+    	str textId = GAME.UI.addDIV("playerText_" + toStr sid, true, commandMenu_createStyle((obj)commandMenu_config.ui.playerText), rowId);
+		GAME.UI.updateDIVText(textId, commandMenu_menuState.players[i].username);
 
 		# Create buttons
-		for(num z = 0; z < lengthOf config.buttons; z++) {
-			obj button = (obj)config.buttons[z];
+		for(num z = 0; z < lengthOf commandMenu_config.buttons; z++) {
+			obj button = (obj)commandMenu_config.buttons[z];
 
 			# Skip any commands that can't be executed on yourself
 			if(!button.executeOnSelf && (bool)player.isYou) {
@@ -167,32 +167,32 @@ action generateMenu() {
 			continue;
 		}
 
-		config.ui.button.backgroundColor = button.color;
+		commandMenu_config.ui.button.backgroundColor = button.color;
 
 		GAME.UI.updateDIVText(
-		GAME.UI.addDIV((str)button.name + idPostfix, true, createStyle((obj)config.ui.button), rowId), 
+		GAME.UI.addDIV((str)button.name + idPostfix, true, commandMenu_createStyle((obj)commandMenu_config.ui.button), rowId), 
 		button.name);
 
 		}
 	}
 }
 
-action showMenu() {
-    if(!menuState.enabled) {
+action commandMenu_showMenu() {
+    if(!commandMenu_menuState.enabled) {
         return;
     }
 
     GAME.INPUTS.unlockMouse();
 
-    generateMenu();
+    commandMenu_generateMenu();
 }
 
-action hideMenu() {
-    GAME.UI.removeDIV((str)config.commandDivId);
-	menuState.created = false;
+action commandMenu_hideMenu() {
+    GAME.UI.removeDIV((str)commandMenu_config.commandDivId);
+	commandMenu_menuState.created = false;
 }
 
-obj action parseDivId(str id) {
+obj action commandMenu_parseDivId(str id) {
 	#name_sid_username
 	
 	obj parsedDiv = {
@@ -229,23 +229,23 @@ obj action parseDivId(str id) {
 	return parsedDiv;
 }
 
-action handleKeyPress(str key) {
-    if((str)config.menuKey == key) {
-        if(!menuState.visible) {
-            showMenu();
+action commandMenu_handleKeyPress(str key) {
+    if((str)commandMenu_config.menuKey == key) {
+        if(!commandMenu_menuState.visible) {
+            commandMenu_showMenu();
         }
     }
 }
 
-action handleDivClicked(str id) {
-	obj parsedDiv = parseDivId(id);
+action commandMenu_handleDivClicked(str id) {
+	obj parsedDiv = commandMenu_parseDivId(id);
 
-	for(num i = 0; i < lengthOf config.buttons; i++) {
-		if((bool)config.buttons[i].isSeparator) {
+	for(num i = 0; i < lengthOf commandMenu_config.buttons; i++) {
+		if((bool)commandMenu_config.buttons[i].isSeparator) {
 			continue;
 		}
 		
-		if((str)config.buttons[i].name == (str)parsedDiv.method) {
+		if((str)commandMenu_config.buttons[i].name == (str)parsedDiv.method) {
 			
 			# Send network message
 			GAME.NETWORK.send("executeCommand", parsedDiv);
@@ -255,38 +255,38 @@ action handleDivClicked(str id) {
 	}
 }
 
-action handleNetworkMessage(str id, obj data) {
+action commandMenu_handleNetworkMessage(str id, obj data) {
     # Server enables menu
     if(id == "commandMenu") {
-        menuState.enabled = true;
+        commandMenu_menuState.enabled = true;
 		
 		for(num i = 0; i < lengthOf data.buttons; i++) {
-			addTo config.buttons data.buttons[i];
+			addTo commandMenu_config.buttons data.buttons[i];
 		}
     }
 }
 
 # Might be another way to detect when clicking off the menu
-action handleMouseClick() {
-	if((bool)menuState.created) {
-        hideMenu();
+action commandMenu_handleMouseClick() {
+	if((bool)commandMenu_menuState.created) {
+        commandMenu_hideMenu();
 	}
 }
 
 # Game Hooks
 
 public action onKeyPress(str key, num code) {
-    handleKeyPress(key);
+    commandMenu_handleKeyPress(key);
 }
 
 public action onDIVClicked(str id) {
-    handleDivClicked(id);
+    commandMenu_handleDivClicked(id);
 }
 
 public action onNetworkMessage(str id, obj data) {
-    handleNetworkMessage(id, data);
+    commandMenu_handleNetworkMessage(id, data);
 }
 
 public action onMouseClick(num button, num x, num y) {
-    handleMouseClick();
+    commandMenu_handleMouseClick();
 }
