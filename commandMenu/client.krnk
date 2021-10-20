@@ -4,7 +4,6 @@
 
 obj commandMenu_config = {
 	menuKey: "o",           # Key used to open menu
-	buttons: obj[],
 	ui: {              		# Styling used for UI
 		menu: {
 			paddingPx: 5,
@@ -55,22 +54,25 @@ obj commandMenu_config = {
 			additional: "display:flex;float:right;font-size:8px;align-items:center;justify-content:center;margin:0px 5px 0px;border-radius:5px;border: 1px solid #333333"
 		},
 		playerText: {
-			width: 48,
-			widthIsPercent: true,
 			height: 100,
 			heightIsPercent: true,
 			
+			enableRoleTag: true,
 			textColor: "#ffffff",
-			additional: "text-align:left;float:left;margin-left:2%"
+			additional: "width:fit-content;text-align:left;float:left;margin-left:2%;"
+		},
+		roleTag: {
+			additional: "width:fit-content;text-align:left;float:left;margin-left:2%;"
 		}
     },    
     commandDivId: "commandDiv"
 };
 
 obj commandMenu_menuState = {
-    enabled: false,
 	created: false,
-    players: obj[] # Can likely remove
+    playerRoles: obj[],
+	roleColors: obj[],
+	buttons: obj[],
 };
 
 str action commandMenu_sizeUnit(bool isPercent) {
@@ -90,8 +92,15 @@ str action commandMenu_createStyle(obj style) {
 		cssStyle += "padding:" + toStr style.paddingPx + "px;";
 	}
 	
-    # Width/Height
-    cssStyle += "width:" + (str)style.width + commandMenu_sizeUnit((bool)style.widthIsPercent) + ";height:" + (str)style.height + commandMenu_sizeUnit((bool)style.heightIsPercent) + ";";
+    # Width
+	if(toNum style.width > 0) {
+		cssStyle += "width:" + (str)style.width + commandMenu_sizeUnit((bool)style.widthIsPercent) + ";";
+	}
+
+	# Height
+	if(toNum style.height > 0) {
+		cssStyle += "height:" + (str)style.height + commandMenu_sizeUnit((bool)style.heightIsPercent) + ";";
+	}
 
     # Background color + opacity
 	if(!!style.backgroundColor) {
@@ -119,8 +128,34 @@ str action commandMenu_createStyle(obj style) {
     return cssStyle;
 }
 
+obj action commandMenu_findRole(obj player) {
+	obj role = { };
+
+	bool found = false;
+
+	for(num i = 0; i < lengthOf commandMenu_menuState.playerRoles; i++) {
+		if((str)player.id == (str)commandMenu_menuState.playerRoles[i].playerId) {
+			found = true;
+			role.value = commandMenu_menuState.playerRoles[i].roleId;
+			break;
+		}
+	}
+	
+	# Find role info, if user has a role
+	if(found) {
+		for(num i = 0; i < lengthOf commandMenu_menuState.roleColors; i++) {
+			if((str)role.value == (str)commandMenu_menuState.roleColors[i].value) {
+				role.info = commandMenu_menuState.roleColors[i];
+				break;
+			}
+		}
+	}
+	
+	return role;
+}
+
 action commandMenu_generateMenu() {
-    commandMenu_menuState.players = GAME.PLAYERS.list();
+    obj[] players = GAME.PLAYERS.list();
 	commandMenu_menuState.created = true;
 
     GAME.UI.addDIV((str)commandMenu_config.commandDivId, true, commandMenu_createStyle((obj)commandMenu_config.ui.menu));
@@ -133,11 +168,14 @@ action commandMenu_generateMenu() {
 	str bodyDiv = GAME.UI.addDIV("commandBody", true, "width:100%;height:" + toStr(100 - (num)commandMenu_config.ui.header.height) +"%;overflow-y:auto;", (str)commandMenu_config.commandDivId);
 
 	# Create rows
-	for(num i = 0; i < lengthOf commandMenu_menuState.players; i++) {
-		obj player = (obj)commandMenu_menuState.players[i];
+	for(num i = 0; i < lengthOf players; i++) {
+		obj player = (obj)players[i];
 		
-		#num sid = (num)commandMenu_menuState.players[i].sid;
-		num sid = i;
+		if(!player.role) {
+			player.role = commandMenu_findRole(player);
+		}
+		
+		num sid = (num)players[i].sid;
 		
 		str idPostfix = "_" + toStr sid + "_" + (str)player.username;
 		
@@ -146,13 +184,24 @@ action commandMenu_generateMenu() {
 		
     	str rowId = GAME.UI.addDIV("playerRow_" + toStr sid, true, commandMenu_createStyle((obj)commandMenu_config.ui.row), bodyDiv);
 	
-		# Create username text
+		# Username
     	str textId = GAME.UI.addDIV("playerText_" + toStr sid, true, commandMenu_createStyle((obj)commandMenu_config.ui.playerText), rowId);
-		GAME.UI.updateDIVText(textId, commandMenu_menuState.players[i].username);
+		GAME.UI.updateDIVText(textId, (str)players[i].username);
+
+		# Role tags
+		bool hasRoleTag = notEmpty (obj)player.role && !!player.role.info && !!player.role.info.color;
+
+		if(hasRoleTag && (bool)commandMenu_config.ui.playerText.enableRoleTag) {
+			str roleStyle = commandMenu_createStyle((obj)commandMenu_config.ui.roleTag) + "color:" + (str)player.role.info.color + ";";
+
+			GAME.UI.updateDIVText(
+				GAME.UI.addDIV("roleTag_" + toStr sid, true, roleStyle, rowId), 
+				"[" + (str)player.role.info.name + "]");
+		}
 
 		# Create buttons
-		for(num z = 0; z < lengthOf commandMenu_config.buttons; z++) {
-			obj button = (obj)commandMenu_config.buttons[z];
+		for(num z = 0; z < lengthOf commandMenu_menuState.buttons; z++) {
+			obj button = (obj)commandMenu_menuState.buttons[z];
 
 			# Skip any commands that can't be executed on yourself
 			if(!button.executeOnSelf && (bool)player.isYou) {
@@ -177,14 +226,29 @@ action commandMenu_generateMenu() {
 	}
 }
 
+bool action commandMenu_hasMenuEnabled() {
+	# All roles with buttons
+	if(lengthOf commandMenu_menuState.buttons > 0) {
+		return true;
+	}
+	
+	obj player = GAME.PLAYERS.getSelf();
+
+	# Find role, if needed
+	if(!player.role) {
+			player.role = commandMenu_findRole(player);
+	}
+
+	# Roles with menu enabled
+	return !!player.role && !!player.role.info && (bool)player.role.info.hasMenu;
+}
+
 action commandMenu_showMenu() {
-    if(!commandMenu_menuState.enabled) {
-        return;
-    }
+	if(commandMenu_hasMenuEnabled()) {
+		GAME.INPUTS.unlockMouse();
 
-    GAME.INPUTS.unlockMouse();
-
-    commandMenu_generateMenu();
+		commandMenu_generateMenu();
+	}
 }
 
 action commandMenu_hideMenu() {
@@ -240,12 +304,12 @@ action commandMenu_handleKeyPress(str key) {
 action commandMenu_handleDivClicked(str id) {
 	obj parsedDiv = commandMenu_parseDivId(id);
 
-	for(num i = 0; i < lengthOf commandMenu_config.buttons; i++) {
-		if((bool)commandMenu_config.buttons[i].isSeparator) {
+	for(num i = 0; i < lengthOf commandMenu_menuState.buttons; i++) {
+		if((bool)commandMenu_menuState.buttons[i].isSeparator) {
 			continue;
 		}
 		
-		if((str)commandMenu_config.buttons[i].name == (str)parsedDiv.method) {
+		if((str)commandMenu_menuState.buttons[i].name == (str)parsedDiv.method) {
 			
 			# Send network message
 			GAME.NETWORK.send("executeCommand", parsedDiv);
@@ -260,10 +324,30 @@ action commandMenu_handleNetworkMessage(str id, obj data) {
     if(id == "commandMenu") {
         commandMenu_menuState.enabled = true;
 		
-		for(num i = 0; i < lengthOf data.buttons; i++) {
-			addTo commandMenu_config.buttons data.buttons[i];
-		}
+		commandMenu_menuState.buttons = data.buttons;
+		commandMenu_menuState.roleColors = data.roles;
+		commandMenu_menuState.playerRoles = data.playerRoles;
     }
+	else if (id == "playerRoles") { # Adds/removes the current players with roles
+		if(!!data.left) {
+			for(num i = 0; i < lengthOf commandMenu_menuState.playerRoles; i++) {
+				if((str)commandMenu_menuState.playerRoles[i].playerId == (str)data.info.playerId) {
+					remove commandMenu_menuState.playerRoles[i];
+					
+					break;
+				}
+			}	
+		}
+		else { # New player
+			obj player = GAME.PLAYERS.getSelf();
+		
+			# Ignore yourself as you should be added later
+			if((str)data.info.playerId != (str)player.id)
+			{
+				addTo commandMenu_menuState.playerRoles data.info;
+			}
+		}
+	}
 }
 
 # Might be another way to detect when clicking off the menu
