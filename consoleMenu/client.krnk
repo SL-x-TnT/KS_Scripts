@@ -108,6 +108,7 @@ action consoleMenu_handleKeyPress(str key, num code) {
 		obj player = GAME.PLAYERS.getSelf();
 		player.defaultMovement = !consoleMenu_menuState.visible;
 		player.disableShooting = consoleMenu_menuState.visible;
+		player.disableMelee = consoleMenu_menuState.visible;
 
 		# Used to have the server disable player movement too
 		GAME.NETWORK.send("menuChange", { visible: consoleMenu_menuState.visible });
@@ -157,6 +158,11 @@ action consoleMenu_handleNetworkMessage(str id, obj data) {
     # Server enables menu
     if(id == "consoleMenu") {
         consoleMenu_menuState.enabled = data.enabled;
+		
+		# Force window to close
+		if(!(bool)data.enabled) {
+			consoleMenu_menuState.visible = false;
+		}
     }
 	else if(id == "commandResponse") {
 		if(!!data.consoleText) {
@@ -260,6 +266,17 @@ action consoleMenu_handlePlayerUpdate(str id, obj inputs) {
 	}
 }
 
+action consoleMenu_handlePlayerSpawn(str id) {
+	obj player = GAME.PLAYERS.findByID(id);
+
+	# Console is open, disable movement
+	if((bool)consoleMenu_menuState.visible) {
+		player.defaultMovement = false;
+		player.disableShooting = true;
+		player.disableMelee = true;
+	}
+}
+
 # Game Hooks
 public action onKeyPress(str key, num code) {
     consoleMenu_handleKeyPress(key, code);
@@ -279,4 +296,8 @@ public action onKeyHeld(str key, num code) {
 
 public action onPlayerUpdate(str id, num delta, static obj inputs) {
 	consoleMenu_handlePlayerUpdate(id, inputs);
+}
+
+public action onPlayerSpawn(str id) {
+	consoleMenu_handlePlayerSpawn(id);
 }
