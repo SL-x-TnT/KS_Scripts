@@ -7,14 +7,19 @@ obj consoleMenu_roles = {
 	host: { name: "Host", value: 1, hasMenu: true },
 	mod: { name: "Mod", value: 1 << 2, hasMenu: true },
 	user: { name: "User", value: 1 << 3 },
-	none: { name: "", value: 1 << 30 } # Shifting 31 bits makes it negative. Can get around this with "(1 << 31) >>> 0" if needed
+	none: { name: "None", value: 1 << 30 } # Shifting 31 bits makes it negative. Can get around this with "(1 << 31) >>> 0" if needed
 };
 
+# Add new roles to this array. Used to add/remove roles
+obj[] consoleMenu_roleArray = obj[(obj)consoleMenu_roles.host, (obj)consoleMenu_roles.mod, (obj)consoleMenu_roles.user, (obj)consoleMenu_roles.none ];
+
 obj consoleMenu_config = {
-	playerRoles: obj[			# List of player names + role. Uses account name. When data storage is implemented, these can be pulled from a database
+	playerRoles: obj[			# List of player names + role. Uses account name. When data storage is implemented, these can be pulled from a database + modified in game
 		{ name: "SLxTnT", role: consoleMenu_roles.host }
 	],
     commands: obj[ 				# List of commands. Has styling for client and added right to left. New commands need to be added to consoleMenu_executeCommand and "Commands" section
+		# disable: property to disable a command
+		
 		# TP/Location commands
 		{ 
 			name: "tpTo", 
@@ -26,7 +31,7 @@ obj consoleMenu_config = {
 			name: "tpLocation", 
 			minRole: consoleMenu_roles.mod,
 			help: "tpLocation [targetPlayer|targetSid] x y z",
-			description: "Teleports player to coordinates. If no targetPlayer supplied, will teleport you to location"
+			description: "Teleports player to coordinates. If no targetPlayer supplied, will teleport you to location."
 		}, 
 		{ 
 			name: "location", 
@@ -37,16 +42,10 @@ obj consoleMenu_config = {
 		
 		# Admin commands
 		{
-			name: "addRole", 
+			name: "role", 
 			minRole: consoleMenu_roles.host,
-			help: "addRole {name|sid} roleName",
-			description: "Adds the target player to the role."
-		},
-		{
-			name: "removeRole", 
-			minRole: consoleMenu_roles.host,
-			help: "removeRole {name|sid} {host|mod}",
-			description: "Removes the target player from the role."
+			help: "role {name|sid} roleName",
+			description: "Modify targets role."
 		},
 		{ 
 			name: "kick", 
@@ -59,6 +58,17 @@ obj consoleMenu_config = {
 			minRole: consoleMenu_roles.mod, 
 			help: "ban {name|sid}",
 			description: "Bans player from server."
+		},{
+			name: "kill", 
+			minRole: consoleMenu_roles.mod, 
+			help: "kill {name|sid}",
+			description: "Kills player."
+		},
+		{
+			name: "godMode", 
+			minRole: consoleMenu_roles.mod, 
+			help: "godMode {enable|disable}",
+			description: "Enables/disables \'god mode\', but 1 shots will still work."
 		},
 		{
 			name: "playerRoles", 
@@ -89,9 +99,30 @@ obj consoleMenu_config = {
 	]
 };
 
+# Player properties until player property bug is fixed. also in handle player spawn
+obj[] consoleMenu_playerProperties = obj[];
+
+obj action consoleMenu_setPlayerProperty(obj player) {
+    obj newPlayerProperty = {};
+    
+    while(lengthOf consoleMenu_playerProperties < (num)player.sid) {
+        addTo consoleMenu_playerProperties {};
+    }
+    
+    consoleMenu_playerProperties[(num)player.sid - 1] = newPlayerProperty;
+    
+    return newPlayerProperty;
+}
+
+obj action consoleMenu_getPlayerProperties(obj player) {
+    return consoleMenu_playerProperties[(num)player.sid - 1];
+}
+
+# End player properties
+
 # Verifies that the player is allowed to target other player based on roles
 bool action consoleMenu_canTarget(obj player, obj target) {
-	return (num)player.roleInfo.value < (num)target.roleInfo.value;
+	return (num)player.properties.roleInfo.value < (num)target.properties.roleInfo.value;
 }
 
 # Finds the player based on sid or partial name search
@@ -100,7 +131,7 @@ obj action consoleMenu_findPlayer(str search) {
 	num sid = toNum search;
 	
 	# It's an sid
-	if(sid > 0) {
+	if(sid > 0 && sid < 100) {
 		for(num i = 0; i < lengthOf players; i++) {
 			if((num)players[i].sid == sid) {
 				return players[i];
@@ -136,6 +167,47 @@ obj action consoleMenu_findPlayer(str search) {
 	return {};
 }
 
+# Finds the role by name or value
+obj action consoleMenu_getRoleInfo(str search) {
+	num value = toNum search;
+	str roleName = UTILS.toLower(search);
+
+	for(num i = 0; i < lengthOf consoleMenu_roleArray; i++) {
+		obj role = consoleMenu_roleArray[i];
+		
+		if(value != 0) {
+			if((num)role.value == value) {
+				return role;
+			}
+		} 
+		else {
+			if(UTILS.toLower(role.name) == roleName) {
+				return role;
+			}
+		}
+	}
+
+	return {};
+}
+
+# Notifies player of a role change
+action consoleMenu_playerRoleChange(obj player, obj newRole) {
+	# Same role, no need to message
+	if((num)player.properties.roleInfo.value == (num)newRole.value) {
+		return;
+	}
+	
+	bool isUpdate = (num)player.properties.roleInfo.value > (num)newRole.value;
+	
+	str message = "Your role has been " + (isUpdate ? "updated" : "downgraded") + " to \'" + (str)newRole.name + "\'";
+	
+	GAME.CHAT.send(player.id, message, isUpdate ? "#00ff00" : "#ff0000");
+
+	if((bool)player.properties.roleInfo.hasMenu != (bool)newRole.hasMenu) {
+		GAME.NETWORK.send("consoleMenu", { enabled: newRole.hasMenu }, player.id);
+	}
+}
+
 # Sends a response for the command
 action consoleMenu_sendResponse(obj player, str text, str consoleText, str error) {
 	GAME.NETWORK.send("commandResponse", {text: text, consoleText: consoleText, error: error }, (str)player.id);
@@ -144,7 +216,7 @@ action consoleMenu_sendResponse(obj player, str text, str consoleText, str error
 # Commands
 
 action consoleMenu_banPlayer(obj command) {
-	if(lengthOf command.parameters != 0) {
+	if(lengthOf command.parameters == 0) {
 		consoleMenu_sendResponse((obj)command.player, "", "", "Invalid parameter count. Expecting 1 got 0");
 	
 		return;
@@ -165,7 +237,7 @@ action consoleMenu_banPlayer(obj command) {
 	}
 
 	if(!consoleMenu_canTarget((obj)command.player, player)) {
-		consoleMenu_sendResponse((obj)command.player, "", "", "You can not ban " + (str)command.parameters[0]);
+		consoleMenu_sendResponse((obj)command.player, "", "", "You can not ban " + (str)player.username);
 
 		return;
 	}
@@ -197,7 +269,7 @@ action consoleMenu_kickPlayer(obj command) {
 	}
 
 	if(!consoleMenu_canTarget((obj)command.player, player)) {
-		consoleMenu_sendResponse((obj)command.player, "", "", "You can not kick " + (str)command.parameters[0]);
+		consoleMenu_sendResponse((obj)command.player, "", "", "You can not kick " + (str)player.username);
 
 		return;
 	}
@@ -205,6 +277,113 @@ action consoleMenu_kickPlayer(obj command) {
 	GAME.ADMIN.kick(player.id);
 
 	consoleMenu_sendResponse((obj)command.player, "Player: " + (str)player.username + " kicked", "", "");
+}
+
+action consoleMenu_killPlayer(obj command) {
+	if(lengthOf command.parameters == 0) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "Invalid parameter count. Expecting 1 got 0");
+	
+		return;
+	}
+
+	obj player = consoleMenu_findPlayer((str)command.parameters[0]);
+
+	if(!(notEmpty player)) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "Failed to find player: " + (str)command.parameters[0]);
+
+		return;
+	}
+
+
+	if((str)command.player.username != (str)player.username && !consoleMenu_canTarget((obj)command.player, player)) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "You can not kill " + (str)player.username);
+
+		return;
+	}
+
+	player.health = 0;
+
+	consoleMenu_sendResponse((obj)command.player, "Player: " + (str)player.username + " killed", "", "");
+}
+
+	# When storage is released, these role commands can modify it for persistence
+action consoleMenu_changePlayerRole(obj command) {
+	if(lengthOf command.parameters != 2) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "Invalid parameter count. Expecting 2 got " + toStr lengthOf command.parameters);
+	
+		return;
+	}
+
+	str playerName = UTILS.toLower(command.parameters[0]);
+
+	if(playerName == UTILS.toLower(command.player.accountName)) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "You can not modify your own role");
+
+		return;
+	}
+
+	# Verify role exists
+	str role = (str)command.parameters[1];
+	obj roleInfo = consoleMenu_getRoleInfo(role);
+
+	if(!(notEmpty roleInfo)) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "Unknown role " + (str)command.parameters[1]);
+
+		return;
+	}
+
+	# Verify you can set this role
+	if((num)roleInfo.value <= (num)command.player.properties.roleInfo.value) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "You don\'t have permission to set the role " + (str)roleInfo.name);
+		return;
+	}
+
+	obj playerRole = {};
+
+	# Search for existing player role
+	for(num i = 0; i < lengthOf consoleMenu_config.playerRoles; i++) {
+		obj tempPlayerRole = (obj)consoleMenu_config.playerRoles[i];
+		
+		if(UTILS.toLower(tempPlayerRole.name) == playerName) {
+			playerRole = tempPlayerRole;
+			break;
+		}
+	}
+
+	# Verify you can modify this player
+	if(notEmpty playerRole) {
+		if((num)playerRole.role.value <= (num)command.player.properties.roleInfo.value) {
+			consoleMenu_sendResponse((obj)command.player, "", "", "You can not modify " + (str)playerRole.name + "\'s role");
+
+			return;
+		}
+
+		# Update role
+		playerRole.role = roleInfo;
+
+		consoleMenu_sendResponse((obj)command.player, "Updated " + (str)playerRole.name + "\'s role to " + (str)roleInfo.name, "", "");
+	}
+	else {
+		# Add to list
+		addTo (obj[])consoleMenu_config.playerRoles { name: playerName, role: roleInfo };
+		
+		consoleMenu_sendResponse((obj)command.player, "Added " + playerName + " with " + (str)roleInfo.name + " role to list", "", "");
+	}
+
+
+	obj player = consoleMenu_findPlayer((str)command.parameters[0]);
+	
+	# Check to see if player exists and the account name is the same (it's a partial search)
+	if(notEmpty player && UTILS.toLower(player.accountName) == playerName) {
+		# Notify player of role change
+		consoleMenu_playerRoleChange(player, roleInfo);
+
+		# Update current properties
+		obj properties = consoleMenu_getPlayerProperties(player);
+		properties.roleInfo = roleInfo;
+		properties.role = roleInfo.role;
+
+	}
 }
 
 action consoleMenu_tpPlayer(obj command) {
@@ -277,13 +456,48 @@ action consoleMenu_help(obj command) {
 	for(num i = 0; i < lengthOf consoleMenu_config.commands; i++) {
 		obj commandInfo = (obj)consoleMenu_config.commands[i];
 		
-		if((num)command.player.roleInfo.value <= (num)commandInfo.minRole.value) {
+		if((num)command.player.properties.roleInfo.value <= (num)commandInfo.minRole.value) {
 			text += "\n" + toStr commandInfo.help;
 			text += "\n\t" + toStr commandInfo.description + "\n";
 		}
 	}
 	
 	consoleMenu_sendResponse((obj)command.player, "Check console for help info (F12)", text, "");
+}
+
+action consoleMenu_godMode(obj command) {
+	num paramLength = lengthOf command.parameters;
+	
+	if(paramLength != 1 && paramLength != 2) {
+			consoleMenu_sendResponse((obj)command.player, "", "", "Invalid parameter count. Expecting 1 or 2 got " + toStr paramLength);
+	}
+	else {
+		obj player = (obj)command.player;
+		
+		if(paramLength == 2) {
+			player = consoleMenu_findPlayer((str)command.parameters[0]);
+		}
+		
+		if(!(notEmpty player)) {
+				consoleMenu_sendResponse((obj)command.player, "", "", "Failed to find player: " + (str)command.parameters[0]);
+
+				return;
+		}
+
+		bool enabled = (str)command.parameters[paramLength - 1] == "enable";
+
+		str s = enabled ? "enabled" : "disabled";
+
+		obj playerProperties = consoleMenu_getPlayerProperties(player);
+		playerProperties.godMode = enabled;
+
+		consoleMenu_sendResponse((obj)command.player, "God Mode " + ((bool)playerProperties.godMode ? "enabled" : "disabled") + " for " + (str)player.username, "", "");
+
+		# Notify target player
+		if((str)player.id != (str)command.player.id) {
+			GAME.CHAT.send(player.id, "God Mode " + s, enabled ? "#00ff00" : "#ff0000");
+		}
+	}
 }
 
 action consoleMenu_location(obj command) {
@@ -333,10 +547,10 @@ action consoleMenu_listPlayers(obj command) {
 	for(num i = 0; i < lengthOf players; i++) {
 		obj player = players[i];
 		
-		text += "[" + toStr player.sid + "] " + (str)player.username;
+		text += "\n[" + toStr player.sid + "] " + (str)player.username;
 		
-		if((num)player.roleInfo.value < (num)consoleMenu_roles.none.value) {
-			text += " [" + (str)player.roleInfo.name + "]";
+		if((num)player.properties.roleInfo.value < (num)consoleMenu_roles.none.value) {
+			text += " [" + (str)player.properties.roleInfo.name + "]";
 		}
 		
 		if((str)player.username != (str)player.accountName) {
@@ -360,34 +574,44 @@ action consoleMenu_listPlayerRoles(obj command) {
 }
 
 action consoleMenu_executeCommand(obj command) {
+	str commandName = (str)command.commandInfo.name;
 	
 	# Add new commands here
-	if((str)command.name == "tpTo" || (str)command.name == "tpLocation") {
+	if(commandName == "tpTo" || commandName == "tpLocation") {
 		consoleMenu_tpPlayer(command);
 	}
-	else if((str)command.name == "kick") {
+	else if(commandName == "kick") {
 		consoleMenu_kickPlayer(command);
 	}
-	else if((str)command.name == "ban") {
+	else if(commandName == "ban") {
 		consoleMenu_banPlayer(command);
 	}
-	else if ((str)command.name == "location") {
+	else if (commandName == "location") {
 		consoleMenu_location(command);
 	}
-	else if ((str)command.name == "help") {
+	else if (commandName == "help") {
 		consoleMenu_help(command);
 	}
-	else if ((str)command.name == "players") {
+	else if (commandName == "players") {
 		consoleMenu_listPlayers(command);
 	}
-	else if((str)command.name == "playerRoles") {
+	else if(commandName == "playerRoles") {
 		consoleMenu_listPlayerRoles(command);	
 	}
-	else if((str)command.name == "sid") {
+	else if(commandName == "sid") {
 		consoleMenu_getSid(command);	
 	}
+	else if (commandName == "kill") {
+		consoleMenu_killPlayer(command);
+	}
+	else if (commandName == "godMode") {
+		consoleMenu_godMode(command);
+	}
+	else if (commandName == "role") {
+		consoleMenu_changePlayerRole(command);	
+	}
 	else {
-			consoleMenu_sendResponse((obj)command.player, "", "", "Command \'" + (str)command.name + "\' not implemented yet");
+		consoleMenu_sendResponse((obj)command.player, "", "", "Command \'" + (str)command.name + "\' not implemented yet");
 	}
 }
 
@@ -406,8 +630,8 @@ obj action consoleMenu_getRole(str accountName) {
 }
  
 bool action consoleMenu_canUseCommand(obj command, obj player) {
-	if((toNum command.minRole.value > 0 && (num)player.roleInfo.value <= (num)command.minRole.value) || 										# minRole is set AND player role is better or equal to command role min
-			toNum command.requiredRole > 0 && ((num)command.requiredRole & (num)player.role) == (num)player.role) { 	# requiredRole is set AND bit flag for player role is set
+	if((toNum command.minRole.value > 0 && (num)player.properties.roleInfo.value <= (num)command.minRole.value) || 										# minRole is set AND player role is better or equal to command role min
+			toNum command.requiredRole > 0 && ((num)command.requiredRole & (num)player.properties.role) == (num)player.properties.role) { 	# requiredRole is set AND bit flag for player role is set
 			return true;
 		}
 	
@@ -461,14 +685,28 @@ obj action consoleMenu_parseCommand(str commandStr) {
 action consoleMenu_handlePlayerSpawn(str id) {
 	obj player = GAME.PLAYERS.findByID(id);
 
-	if(!player.role) {
-		player.roleInfo = consoleMenu_getRole((str)player.accountName);
-		player.role = player.roleInfo.value;	# Too lazy to change .role to an object
+    # Modifiable custom properties
+    if(!player.properties) {
+        player.properties = consoleMenu_setPlayerProperty(player);
+    }
 
-		if(!!player.roleInfo.hasMenu) {
+	if(!player.properties.role) {
+        obj properties = consoleMenu_getPlayerProperties(player);
+
+        properties.roleInfo = consoleMenu_getRole((str)player.accountName);
+        properties.role = properties.roleInfo.value; 	#  Too lazy to change .role to an object everywhere else
+		properties.maxHealth = player.health; 			# Pseudo god mode
+
+		if(!!properties.roleInfo.hasMenu) {
 			GAME.NETWORK.send("consoleMenu", { enabled: true }, id);
-			GAME.CHAT.send(id, "Console menu enabled. Press ` to open", "#00ff00");
+			GAME.CHAT.send(id, "Console menu enabled.", "#00ff00");
 		}
+	}
+
+	if(!!player.properties.menuOpened) {
+		player.defaultMovement = false;
+		player.disableShooting = true;
+		player.disableMelee = true;
 	}
 }
 
@@ -482,7 +720,7 @@ action consoleMenu_handleNetworkMessage(str id, obj data, str playerID) {
 		parsedCommand.player = player;
 
 		# Valid command
-		if(notEmpty commandInfo && consoleMenu_canUseCommand((obj)parsedCommand.commandInfo, player)) {
+		if(notEmpty commandInfo && consoleMenu_canUseCommand((obj)parsedCommand.commandInfo, player) && !commandInfo.disabled) {
 			consoleMenu_executeCommand(parsedCommand);
 		}
 		else {
@@ -490,12 +728,28 @@ action consoleMenu_handleNetworkMessage(str id, obj data, str playerID) {
 		}
 	}
 	else if (id == "menuChange") {
+        obj properties = consoleMenu_getPlayerProperties(player);
+
+		properties.menuOpened = data.visible;
 		player.defaultMovement = !data.visible;
 		player.disableShooting = data.visible;
+		player.disableMelee  = data.visible;
+	}
+}
+
+action consoleMenu_handlePlayerUpdate(str id, obj inputs) {
+	obj player = GAME.PLAYERS.findByID(id);
+
+	if((bool)player.properties.godMode && (num)player.health < (num)player.properties.maxHealth) {
+		player.health = (num)player.properties.maxHealth;
 	}
 }
 
 # Game Hooks
+
+public action onPlayerUpdate(str id, num delta, static obj inputs) {
+	consoleMenu_handlePlayerUpdate(id, inputs);
+}
 
 public action onPlayerSpawn(str id) {
 	consoleMenu_handlePlayerSpawn(id);
