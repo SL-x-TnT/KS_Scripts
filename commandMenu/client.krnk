@@ -177,8 +177,8 @@ action commandMenu_generateMenu() {
 		
 		num sid = (num)players[i].sid;
 		
-		str idPostfix = "_" + toStr sid + "_" + (str)player.username;
-		
+		str idPostfix = "|" + toStr sid + "|" + (str)player.username;
+
 		# Create row
 		commandMenu_config.ui.row.backgroundColor = (i + 1) % 2 == 0 ? (str)commandMenu_config.ui.row.rowEvenColor : (str)commandMenu_config.ui.row.rowOddColor; # Alternates background color where first row is odd
 		
@@ -269,7 +269,7 @@ obj action commandMenu_parseDivId(str id) {
 	str temp = "";
 	
 	for(num i = 0; i < lengthOf id; i++) {
-		if((str)id[i] == "_") {
+		if((str)id[i] == "|") {
 			addTo split temp;
 			temp = "";
 			
