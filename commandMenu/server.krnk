@@ -59,11 +59,11 @@ action  commandMenu_tpPlayer(obj from, obj to) {
 	from.velocity.z = 0;
 }
 
-obj action commandMenu_findPlayer(str accountName) {
+obj action commandMenu_findPlayer(num sid) {
 	obj[] players = GAME.PLAYERS.list();
 
 	for(num i = 0; i < lengthOf players; i++) {
-		if((str)players[i].accountName == accountName) {
+		if((num)players[i].sid == sid) {
 			return (obj)players[i];
 		}
 	}
@@ -183,7 +183,7 @@ action commandMenu_handleNetworkMessage(str id, obj data, str playerID) {
 			obj player = GAME.PLAYERS.findByID(playerID);
 			str playerName = toStr data.username;
 	
-			obj targetPlayer = commandMenu_findPlayer(playerName);
+			obj targetPlayer = commandMenu_findPlayer((num)data.sid);
 
 			if(!(notEmpty targetPlayer)) {
 				commandMenu_sendError(player, command, "Target player doesn\'t exist");
