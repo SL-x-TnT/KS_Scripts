@@ -294,7 +294,7 @@ public action onKeyHeld(str key, num code) {
     consoleMenu_handleKeyPress(key, code);
 }
 
-public action onPlayerUpdate(str id, num delta, static obj inputs) {
+public action onPlayerUpdate(str id, num delta, obj inputs) {
 	consoleMenu_handlePlayerUpdate(id, inputs);
 }
 
