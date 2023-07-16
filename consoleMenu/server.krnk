@@ -540,13 +540,27 @@ action consoleMenu_getSid(obj command) {
 }
 
 action consoleMenu_listPlayers(obj command) {
+	if(lengthOf command.parameters > 1) {
+		consoleMenu_sendResponse((obj)command.player, "", "", "Invalid parameter count. Expecting 1 got 0");
+		return;
+	}
+
 	str text = "\n";
 	
-	obj[] players = GAME.PLAYERS.list();
+	bool isSearch = lengthOf command.parameters == 1; 
 
+	obj[] players = GAME.PLAYERS.list();
 	for(num i = 0; i < lengthOf players; i++) {
 		obj player = players[i];
 		
+		if(isSearch) {
+			str searchText = UTILS.toLower(command.parameters[0]);
+
+			if(!UTILS.textContains(UTILS.toLower(player.username), searchText) && !UTILS.textContains(UTILS.toLower(player.accountName), searchText)) {
+				continue;
+			}
+		}
+
 		text += "\n[" + toStr player.sid + "] " + (str)player.username;
 		
 		if((num)player.properties.roleInfo.value < (num)consoleMenu_roles.none.value) {
@@ -747,7 +761,7 @@ action consoleMenu_handlePlayerUpdate(str id, obj inputs) {
 
 # Game Hooks
 
-public action onPlayerUpdate(str id, num delta, static obj inputs) {
+public action onPlayerUpdate(str id, num delta, obj inputs) {
 	consoleMenu_handlePlayerUpdate(id, inputs);
 }
 
